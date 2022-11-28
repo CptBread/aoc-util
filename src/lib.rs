@@ -6,43 +6,42 @@ macro_rules! parse_util{
 	($s:ident, $t:ty, $end:literal) => {
 		{
 			// Create a lambda to be called so that we can shortcirtuit at any point
-			let f = |s: &str| {
+			let mut f = || {
 				#[allow(unused)]
-				let mut ss = s;
+				let mut ss: &str = $s.as_ref();
 				Some(parse_util!(step ss, $t, $end))
 			};
-			f($s)
+			f()
 		}
-	};
-
-	($s:ident, $t:ty) => {
-		<$t>::parse($s)
 	};
 
 	($s:literal $(,$prefix:literal)? $(, $more_t:ty, $more_s:literal)*) => {
 		{
 			#[allow(unused)]
-			let mut ss = $s;
+			let mut ss: &str = $s.as_ref();
 			parse_util!(ss $(,$prefix)? $(, $more_t, $more_s)*)
 		}
 	};
 
 	($s:ident, $prefix:literal $(, $more_t:ty, $more_s:literal)*) => {
-		#[allow(unused)]
-		if let Some(mut rest) = $s.strip_prefix($prefix) {
-			parse_util!(rest $(, $more_t, $more_s)*)
-		}
-		else {
-			None
+		{
+			#[allow(unused)]
+			if let Some(mut rest) = $s.strip_prefix($prefix) {
+				parse_util!(rest $(, $more_t, $more_s)*)
+			}
+			else {
+				None
+			}
 		}
 	};
 
 	($s:ident $(, $more_t:ty, $more_s:literal)*) => {
 		{
+			#[allow(unused)]
 			let mut f = || {
-				// _ss so that we don't get faulty "value assigned to `ss` is never read" warnings
-				// let mut _ss = s;
-				Some(($(parse_util!(step $s, $more_t, $more_s),)*))
+				#[allow(unused)]
+				let mut ss: &str = $s.as_ref();
+				Some(($(parse_util!(step ss, $more_t, $more_s),)*))
 			};
 			f()
 		}
@@ -148,7 +147,7 @@ mod tests {
 
 	#[test]
 	fn parse_str() {
-		assert_eq!(parse_util!("test 1 2 3 h all", "test ", u8, " ", u8, " ", u8, " ", char, " ", PassStr, ""), Some((1, 2, 3, 'h', "all")));
+		assert_eq!(parse_util!("test 1 2 3 h all", PassStr, " ", Seperated<PassStr, ' '>, " h", Trim<PassStr>, ""), Some(("test", vec!["1", "2", "3"], "all")));
 	}
 
 	#[test]
@@ -170,4 +169,20 @@ mod tests {
 	fn parse_seperator() {
 		assert_eq!(parse_util!("test 12. 11.10;", "test ", Seperated<Trim<u32>, '.'>, ";"), Some(vec![12, 11, 10]));
 	}
+
+	#[test]
+	fn parse_from_string() {
+		let s = String::from("test 12 1");
+		assert_eq!(parse_util!(s, "test ", u32, " ", u32, ""), Some((12, 1)));
+	}
+
+	#[test]
+	fn parse_from_string2() {
+		let l = "12,13 -> 12,13".to_string();
+		let line = l.as_str();
+		let (x0, y0, x1, y1) = parse_util!(l, i32, ",", i32, " -> ", i32, ",", i32, "").unwrap();
+		println!("{}", l);
+	}
+
+	
 }
