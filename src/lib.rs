@@ -74,34 +74,29 @@ macro_rules! parse_util{
 	};
 }
 
-pub trait ParseUtil {
+pub trait ParseUtil<'a> {
 	type Res;
-	fn parse(s: &str) -> Option<Self::Res>;
+	fn parse(s: &'a str) -> Option<Self::Res>;
 
-	fn long_name_for_macro_calling_parse(s: &str) -> Option<Self::Res> {
+	fn long_name_for_macro_calling_parse(s: &'a str) -> Option<Self::Res> {
 		Self::parse(s)
-	}
-}
-
-impl<T> ParseUtil for T where T: FromStr {
-	type Res = Self;
-	fn parse(s: &str) -> Option<Self> {
-		s.parse().ok()
 	}
 }
 
 // Seperate trait as because we are using macros so lets use that to deal with pass through &str
-pub trait ParseUtilStr<'a> {
-	fn parse(s: &'a str) -> Option<&'a str>;
+pub struct PassStr<'a>(PhantomData<&'a str>);
 
-	fn long_name_for_macro_calling_parse(s: &'a str) -> Option<&'a str> {
-		Self::parse(s)
+impl<'a> ParseUtil<'a> for PassStr<'a> {
+	type Res = &'a str;
+	fn parse(s: &'a str) -> Option<&'a str> {
+		Some(s)
 	}
 }
 
-impl<'a> ParseUtilStr<'a> for &'a str {
-	fn parse(s: &'a str) -> Option<&'a str> {
-		Some(s)
+impl<'a, T> ParseUtil<'a> for T where T: FromStr {
+	type Res = Self;
+	fn parse(s: &'a str) -> Option<Self> {
+		s.parse().ok()
 	}
 }
 
@@ -109,9 +104,9 @@ pub type Csv<T> = CsvStict<Trim<T>>;
 
 pub struct CsvStict<T>(PhantomData<T>);
 
-impl<T> ParseUtil for CsvStict<T> where T: ParseUtil{
+impl<'a, T> ParseUtil<'a> for CsvStict<T> where T: ParseUtil<'a>{
 	type Res = Vec<T::Res>;
-	fn parse(s: &str) -> Option<Self::Res> {
+	fn parse(s: &'a str) -> Option<Self::Res> {
 		let mut res = Vec::new();
 		// TODO: Properly do csv parsing
 		for s in s.split(",") {
@@ -123,9 +118,9 @@ impl<T> ParseUtil for CsvStict<T> where T: ParseUtil{
 
 pub struct Seperated<T, const SEP: char>(PhantomData<T>);
 
-impl<T, const SEP: char> ParseUtil for Seperated<T, SEP> where T: ParseUtil{
+impl<'a, T, const SEP: char> ParseUtil<'a> for Seperated<T, SEP> where T: ParseUtil<'a> {
 	type Res = Vec<T::Res>;
-	fn parse(s: &str) -> Option<Self::Res> {
+	fn parse(s: &'a str) -> Option<Self::Res> {
 		let mut res = Vec::new();
 		for s in s.split(SEP) {
 			res.push(T::parse(s)?);
@@ -135,15 +130,9 @@ impl<T, const SEP: char> ParseUtil for Seperated<T, SEP> where T: ParseUtil{
 }
 
 pub struct Trim<T>(PhantomData<T>);
-impl<T> ParseUtil for Trim<T> where T: ParseUtil {
-	type Res = <T as ParseUtil>::Res;
-	fn parse(s: &str) -> Option<Self::Res> {
-		<T>::parse(s.trim())
-	}
-}
-
-impl<'a, T> ParseUtilStr<'a> for Trim<T> where T: ParseUtilStr<'a> {
-	fn parse(s: &'a str) -> Option<&'a str> {
+impl<'a, T> ParseUtil<'a> for Trim<T> where T: ParseUtil<'a> {
+	type Res = <T as ParseUtil<'a>>::Res;
+	fn parse(s: &'a str) -> Option<Self::Res> {
 		<T>::parse(s.trim())
 	}
 }
@@ -159,7 +148,7 @@ mod tests {
 
 	#[test]
 	fn parse_str() {
-		assert_eq!(parse_util!("test 1 2 3 h all", "test ", u8, " ", u8, " ", u8, " ", char, " ", &str, ""), Some((1, 2, 3, 'h', "all")));
+		assert_eq!(parse_util!("test 1 2 3 h all", "test ", u8, " ", u8, " ", u8, " ", char, " ", PassStr, ""), Some((1, 2, 3, 'h', "all")));
 	}
 
 	#[test]
