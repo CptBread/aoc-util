@@ -136,6 +136,29 @@ impl<'a, T> ParseUtil<'a> for Trim<T> where T: ParseUtil<'a> {
 	}
 }
 
+pub struct Seperated2d<T, const SEP: char, const LSEP: char>(PhantomData<T>);
+impl<'a, T, const SEP: char, const LSEP: char> ParseUtil<'a> for Seperated2d<T, SEP, LSEP> where T: ParseUtil<'a> {
+	type Res = (Vec<T::Res>, usize);
+	fn parse(s: &'a str) -> Option<Self::Res> {
+		let mut res = Vec::new();
+		let mut w = None;
+		for s in s.split(LSEP) {
+			let mut len = 0;
+			for s in s.split(SEP) {
+				res.push(T::parse(s)?);
+				len += 1;
+			}
+			if let Some(w) = w {
+				assert_eq!(w, len, "Parsing Seperated2d requires that each line contains the same amount of items");
+			}
+			else {
+				w = Some(len);
+			}
+		}
+		Some((res, w.unwrap_or(0)))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -179,10 +202,12 @@ mod tests {
 	#[test]
 	fn parse_from_string2() {
 		let l = "12,13 -> 12,13".to_string();
-		let line = l.as_str();
-		let (x0, y0, x1, y1) = parse_util!(l, i32, ",", i32, " -> ", i32, ",", i32, "").unwrap();
-		println!("{}", l);
+		assert_eq!(parse_util!(l, i32, ",", i32, " -> ", i32, ",", i32, ""), Some((12,13,12,13)));
+		assert_eq!(l.as_str(), "12,13 -> 12,13");
 	}
 
-	
+	#[test]
+	fn parse_2d() {
+		assert_eq!(parse_util!("test 0. 0;1.1;2.2", "test ", Seperated2d<Trim<u32>, '.', ';'>, ""), Some((vec![0, 0, 1, 1, 2, 2], 2)));
+	}
 }
