@@ -2,14 +2,14 @@ use std::str::{FromStr};
 use core::marker::PhantomData;
 
 #[macro_export]
-macro_rules! parse_util{
+macro_rules! parse_t{
 	($s:ident, $t:ty, $end:literal) => {
 		{
 			// Create a lambda to be called so that we can shortcirtuit at any point
 			let mut f = || {
 				#[allow(unused)]
 				let mut ss: &str = $s.as_ref();
-				Some(parse_util!(step ss, $t, $end))
+				Some(parse_t!(step ss, $t, $end))
 			};
 			f()
 		}
@@ -19,7 +19,7 @@ macro_rules! parse_util{
 		{
 			#[allow(unused)]
 			let mut ss: &str = $s.as_ref();
-			parse_util!(ss $(,$prefix)? $(, $more_t, $more_s)*)
+			parse_t!(ss $(,$prefix)? $(, $more_t, $more_s)*)
 		}
 	};
 
@@ -27,7 +27,7 @@ macro_rules! parse_util{
 		{
 			#[allow(unused)]
 			if let Some(mut rest) = $s.strip_prefix($prefix) {
-				parse_util!(rest $(, $more_t, $more_s)*)
+				parse_t!(rest $(, $more_t, $more_s)*)
 			}
 			else {
 				None
@@ -41,7 +41,7 @@ macro_rules! parse_util{
 			let mut f = || {
 				#[allow(unused)]
 				let mut ss: &str = $s.as_ref();
-				Some(($(parse_util!(step ss, $more_t, $more_s),)*))
+				Some(($(parse_t!(step ss, $more_t, $more_s),)*))
 			};
 			f()
 		}
@@ -73,7 +73,7 @@ macro_rules! parse_util{
 	};
 }
 
-pub trait ParseUtil<'a> {
+pub trait ParseTUtil<'a> {
 	type Res;
 	fn parse(s: &'a str) -> Option<Self::Res>;
 
@@ -85,14 +85,14 @@ pub trait ParseUtil<'a> {
 // Seperate trait as because we are using macros so lets use that to deal with pass through &str
 pub struct PassStr<'a>(PhantomData<&'a str>);
 
-impl<'a> ParseUtil<'a> for PassStr<'a> {
+impl<'a> ParseTUtil<'a> for PassStr<'a> {
 	type Res = &'a str;
 	fn parse(s: &'a str) -> Option<&'a str> {
 		Some(s)
 	}
 }
 
-impl<'a, T> ParseUtil<'a> for T where T: FromStr {
+impl<'a, T> ParseTUtil<'a> for T where T: FromStr {
 	type Res = Self;
 	fn parse(s: &'a str) -> Option<Self> {
 		s.parse().ok()
@@ -103,7 +103,7 @@ pub type Csv<T> = CsvStict<Trim<T>>;
 
 pub struct CsvStict<T>(PhantomData<T>);
 
-impl<'a, T> ParseUtil<'a> for CsvStict<T> where T: ParseUtil<'a>{
+impl<'a, T> ParseTUtil<'a> for CsvStict<T> where T: ParseTUtil<'a>{
 	type Res = Vec<T::Res>;
 	fn parse(s: &'a str) -> Option<Self::Res> {
 		let mut res = Vec::new();
@@ -117,7 +117,7 @@ impl<'a, T> ParseUtil<'a> for CsvStict<T> where T: ParseUtil<'a>{
 
 pub struct Seperated<T, const SEP: char>(PhantomData<T>);
 
-impl<'a, T, const SEP: char> ParseUtil<'a> for Seperated<T, SEP> where T: ParseUtil<'a> {
+impl<'a, T, const SEP: char> ParseTUtil<'a> for Seperated<T, SEP> where T: ParseTUtil<'a> {
 	type Res = Vec<T::Res>;
 	fn parse(s: &'a str) -> Option<Self::Res> {
 		let mut res = Vec::new();
@@ -129,15 +129,15 @@ impl<'a, T, const SEP: char> ParseUtil<'a> for Seperated<T, SEP> where T: ParseU
 }
 
 pub struct Trim<T>(PhantomData<T>);
-impl<'a, T> ParseUtil<'a> for Trim<T> where T: ParseUtil<'a> {
-	type Res = <T as ParseUtil<'a>>::Res;
+impl<'a, T> ParseTUtil<'a> for Trim<T> where T: ParseTUtil<'a> {
+	type Res = <T as ParseTUtil<'a>>::Res;
 	fn parse(s: &'a str) -> Option<Self::Res> {
 		<T>::parse(s.trim())
 	}
 }
 
 pub struct Seperated2d<T, const SEP: char, const LSEP: char>(PhantomData<T>);
-impl<'a, T, const SEP: char, const LSEP: char> ParseUtil<'a> for Seperated2d<T, SEP, LSEP> where T: ParseUtil<'a> {
+impl<'a, T, const SEP: char, const LSEP: char> ParseTUtil<'a> for Seperated2d<T, SEP, LSEP> where T: ParseTUtil<'a> {
 	type Res = (Vec<T::Res>, usize);
 	fn parse(s: &'a str) -> Option<Self::Res> {
 		let mut res = Vec::new();
@@ -159,55 +159,136 @@ impl<'a, T, const SEP: char, const LSEP: char> ParseUtil<'a> for Seperated2d<T, 
 	}
 }
 
+#[macro_export]
+macro_rules! parse_f{
+	($s:expr, $($prefix:literal,)? $(($p:expr, $sep:literal)),+) => {
+		{
+			// Create a lambda to be called so that we can shortcirtuit at any point
+			let mut f = || {
+				#[allow(unused)]
+				let mut ss: &str = ($s).as_ref()$(.strip_prefix($prefix)?)?;
+				Some(($(parse_f!(step ss, $p, $sep)),*, ss))
+			};
+			f()
+		}
+	};
+
+	(step $s:ident, $p:expr, $sep:literal) => {
+		{
+			if $sep == "" {
+				if let Some(v) = $p($s) {
+					$s = "";
+					v
+				}
+				else {
+					return None;
+				}
+			}
+			else if let Some((front, end)) = $s.split_once($sep) {
+				$s = end;
+				if let Some(v) = $p(front) {
+					v
+				}
+				else {
+					return None;
+				}
+			}
+			else {
+				return None;
+			}
+		}
+	};
+}
+
+fn from_str<'a, T: FromStr>(s: &'a str) -> Option<T> {
+	s.parse::<T>().ok()
+}
+
+fn from_adaptor<'a, T: ParseTUtil<'a>>(s: &'a str) -> Option<T::Res> {
+	T::parse(s)
+}
+
+fn passtrough(s: &str) -> Option<&str> {
+	Some(s)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 
 	#[test]
-	fn parse_many() {
-		assert_eq!(parse_util!("test 1 2 3 h all", "test ", u8, " ", u8, " ", u8, " ", char, " ", String, ""), Some((1, 2, 3, 'h', "all".into())));
+	fn parse_t_many() {
+		assert_eq!(parse_t!("test 1 2 3 h all", "test ", u8, " ", u8, " ", u8, " ", char, " ", String, ""), Some((1, 2, 3, 'h', "all".into())));
 	}
 
 	#[test]
-	fn parse_str() {
-		assert_eq!(parse_util!("test 1 2 3 h all", PassStr, " ", Seperated<PassStr, ' '>, " h", Trim<PassStr>, ""), Some(("test", vec!["1", "2", "3"], "all")));
+	fn parse_t_str() {
+		assert_eq!(parse_t!("test 1 2 3 h all", PassStr, " ", Seperated<PassStr, ' '>, " h", Trim<PassStr>, ""), Some(("test", vec!["1", "2", "3"], "all")));
 	}
 
 	#[test]
-	fn parse_last() {
-		assert_eq!(parse_util!("test 12", "test ", u8, ""), Some(12));
+	fn parse_t_last() {
+		assert_eq!(parse_t!("test 12", "test ", u8, ""), Some(12));
 	}
 
 	#[test]
-	fn parse_trim() {
-		assert_eq!(parse_util!("test 12", "test", Trim<u8>, ""), Some(12));
+	fn parse_t_trim() {
+		assert_eq!(parse_t!("test 12", "test", Trim<u8>, ""), Some(12));
 	}
 
 	#[test]
-	fn parse_csv() {
-		assert_eq!(parse_util!("test 12, 11,10;", "test ", Csv<u32>, ";"), Some(vec![12, 11, 10]));
+	fn parse_t_csv() {
+		assert_eq!(parse_t!("test 12, 11,10;", "test ", Csv<u32>, ";"), Some(vec![12, 11, 10]));
 	}
 
 	#[test]
-	fn parse_seperator() {
-		assert_eq!(parse_util!("test 12. 11.10;", "test ", Seperated<Trim<u32>, '.'>, ";"), Some(vec![12, 11, 10]));
+	fn parse_t_seperator() {
+		assert_eq!(parse_t!("test 12. 11.10;", "test ", Seperated<Trim<u32>, '.'>, ";"), Some(vec![12, 11, 10]));
 	}
 
 	#[test]
-	fn parse_from_string() {
+	fn parse_t_from_string() {
 		let s = String::from("test 12 1");
-		assert_eq!(parse_util!(s, "test ", u32, " ", u32, ""), Some((12, 1)));
+		assert_eq!(parse_t!(s, "test ", u32, " ", u32, ""), Some((12, 1)));
 	}
 
 	#[test]
-	fn parse_from_string2() {
+	fn parse_t_from_string2() {
 		let l = "12,13 -> 12,13".to_string();
-		assert_eq!(parse_util!(l, i32, ",", i32, " -> ", i32, ",", i32, ""), Some((12,13,12,13)));
+		assert_eq!(parse_t!(l, i32, ",", i32, " -> ", i32, ",", i32, ""), Some((12,13,12,13)));
 		assert_eq!(l.as_str(), "12,13 -> 12,13");
 	}
 
 	#[test]
-	fn parse_2d() {
-		assert_eq!(parse_util!("test 0. 0;1.1;2.2", "test ", Seperated2d<Trim<u32>, '.', ';'>, ""), Some((vec![0, 0, 1, 1, 2, 2], 2)));
+	fn parse_t_2d() {
+		assert_eq!(parse_t!("test 0. 0;1.1;2.2", "test ", Seperated2d<Trim<u32>, '.', ';'>, ""), Some((vec![0, 0, 1, 1, 2, 2], 2)));
+	}
+
+	#[test]
+	fn parse_f_from_str() {
+		assert_eq!(parse_f!("1, 2, 3", (from_str::<u8>, ", "), (from_str::<u8>, ", ")), Some((1, 2, "3")));
+	}
+
+	#[test]
+	fn parse_f_adaptors() {
+		assert_eq!(parse_f!("1, 2, 3", (from_adaptor::<Csv<u8>>, "")), Some((vec![1, 2, 3], "")));
+	}
+
+	#[test]
+	fn parse_f_passthrough() {
+		assert_eq!(parse_f!("1, 2, 3", (passtrough, "")), Some(("1, 2, 3", "")));
+	}
+
+	#[test]
+	fn parse_f_closure() {
+		let n = 1;
+		assert_eq!(parse_f!("1", (|s: &str|{ Some(s.parse::<u8>().ok()? + n) }, "")), Some((2u8, "")));
+	}
+
+	#[test]
+	fn parse_f_closure_mut() {
+		let mut n = 0;
+		let mut f = |s: &str| -> Option<u8> { n += 1; Some(s.parse::<u8>().ok()? + n) };
+		assert_eq!(parse_f!("0,0", (f, ","), (f, "")), Some((1u8, 2u8, "")));
 	}
 }
