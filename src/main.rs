@@ -1,4 +1,4 @@
-use aoc_util::*;
+use aoc_util::parse_t::*;
 
 fn main() {
 	println!("Hello, world!");
