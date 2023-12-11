@@ -161,11 +161,22 @@ impl<'a, T, const SEP: char, const LSEP: char> ParseTUtil<'a> for Seperated2d<T,
 	}
 }
 
+pub struct Chars<const NUM: usize>();
+impl<'a, const NUM: usize> ParseTUtil<'a> for Chars<NUM> {
+	type Res = [char; NUM];
+	fn parse(s: &'a str) -> Option<Self::Res> {
+		if s.len() != NUM {
+			return None;
+		}
+		let v = s.chars().collect::<Vec<_>>();
+		v.try_into().ok()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use crate::parse_t;
 	use super::*;
-
 
 	#[test]
 	fn parse_t_many() {
@@ -213,5 +224,10 @@ mod tests {
 	#[test]
 	fn parse_t_2d() {
 		assert_eq!(parse_t!("test 0. 0;1.1;2.2", "test ", Seperated2d<Trim<u32>, '.', ';'>, ""), Some((vec![0, 0, 1, 1, 2, 2], 2)));
+	}
+
+	#[test]
+	fn parse_t_chars() {
+		assert_eq!(parse_t!("test 123", Chars<4>, " ", Chars<3>, ""), Some((['t', 'e', 's', 't'], ['1', '2', '3'])));
 	}
 }

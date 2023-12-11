@@ -9,6 +9,7 @@ macro_rules! parse_f{
 	($s:expr, $($prefix:literal,)? $(($p:expr, $sep:literal)),+) => {
 		{
 			// Create a lambda to be called so that we can shortcirtuit at any point
+			#[allow(unused_mut)]
 			let mut f = || {
 				#[allow(unused)]
 				let mut ss: &str = ($s).as_ref();
@@ -58,13 +59,21 @@ pub fn passtrough(s: &str) -> Option<&str> {
 	Some(s)
 }
 
-pub fn seperated_f<'b, 'a, T, F: FnMut(&'a str) -> Option<T> + 'b>(sep: &'b str, mut func: F) -> impl FnMut(&'a str) -> Option<Vec<T>> + 'b {
+pub fn seperated<'b, 'a, T, F: FnMut(&'a str) -> Option<T> + 'b>(sep: &'b str, mut func: F) -> impl FnMut(&'a str) -> Option<Vec<T>> + 'b {
 	move |s: &'a str| -> Option<Vec<T>> {
 		let mut res = Vec::new();
 		for s in s.split(sep) {
 			res.push(func(s)?);
 		}
 		Some(res)
+	}
+}
+
+pub fn trim<'a, T, F>(mut func: F) -> impl FnMut(&'a str) -> Option<T> 
+	where F: FnMut(&'a str) -> Option<T>
+{
+	move |s: &str| {
+		func(s.trim())
 	}
 }
 
@@ -129,6 +138,11 @@ mod tests {
 	use crate::parse_t::Csv;
 
 	#[test]
+	fn parse_many() {
+		assert_eq!(parse_f!("test 1 2 3 h all", "test ", (from_str, " "), (from_str, " "), (from_str, " "), (from_str, " ")), Some((1u8, 2u8, 3u8, 'h', "all")));
+	}
+
+	#[test]
 	fn parse_f_from_str() {
 		assert_eq!(parse_f!("1, 2, 3", (from_str::<u8>, ", "), (from_str::<u8>, ", ")), Some((1, 2, "3")));
 	}
@@ -157,11 +171,11 @@ mod tests {
 	}
 
 	#[test]
-	fn parse_f_seperated_f() {
+	fn parse_f_seperated() {
 		let mut n = 0;
 		let f = |s: &str| -> Option<u8> { n += 1; Some(s.parse::<u8>().ok()? + n) };
-		assert_eq!(parse_f!("0, 0", (seperated_f(", ", f), "")), Some((vec![1u8, 2u8], "")));
-		assert_eq!(parse_f!("0, 0", (seperated_f(", ", from_str), "")), Some((vec![0u8, 0u8], "")));
+		assert_eq!(parse_f!("0, 0", (seperated(", ", f), "")), Some((vec![1u8, 2u8], "")));
+		assert_eq!(parse_f!("0, 0", (seperated(", ", from_str), "")), Some((vec![0u8, 0u8], "")));
 	}
 
 	#[test]
@@ -179,6 +193,6 @@ mod tests {
 
 	#[test]
 	fn parse_f_prefix() {
-		assert_eq!(parse_f!("test 12.11.10;", "test ", (seperated_f(".", from_str), ";")), Some((vec![12, 11, 10], "")));
+		assert_eq!(parse_f!("test 12.11.10;", "test ", (seperated(".", from_str), ";")), Some((vec![12, 11, 10], "")));
 	}
 }

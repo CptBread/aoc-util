@@ -5,6 +5,7 @@ use std::convert::TryInto;
 use vek::vec::repr_c::{Vec2};
 
 pub type Pos = Vec2<usize>;
+pub type PosOff = Vec2<isize>;
 
 // Maybe remove this struct and just have free loading functions...
 #[derive(Clone, Debug, Default)]
@@ -235,6 +236,7 @@ impl<T> Array2D<T> {
 		self.data.chunks_exact_mut(self.width)
 	}
 
+	// left(-x), right, up(-y), down
 	pub fn neighbours(&self, p: Pos) -> [Option<Pos>; 4] {
 		let mut res = [None; 4];
 		res[0] = self.pos_offset(p, 0 - 1, 0);
@@ -255,5 +257,52 @@ impl<T> Array2D<T> {
 		res[6] = self.pos_offset(p, 0 + 1, 0 - 1);
 		res[7] = self.pos_offset(p, 0 - 1, 0 + 1);
 		res
+	}
+
+	pub fn insert_row(&mut self, row: usize, fill: T) 
+		where T: Clone
+	{
+		let idx = row * self.width;
+		self.data.splice(idx..idx, (0..self.width).map(|_| fill.clone()));
+	}
+
+	pub fn insert_col(&mut self, col: usize, fill: T) 
+		where T: Clone
+	{
+		for row in (0..self.height).rev() {
+			let idx = row * self.width + col;
+			self.data.insert(idx, fill.clone());
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_insert_row() {
+		let mut arr = Array2D::new(2, 3, '.');
+		arr.insert_row(1, '*');
+		let s: String = arr.data.iter().collect();
+		assert_eq!(s, "..**....");
+
+		let mut arr = Array2D::new(2, 3, '.');
+		arr.insert_row(0, '*');
+		let s: String = arr.data.iter().collect();
+		assert_eq!(s, "**......");
+	}
+
+	#[test]
+	fn test_insert_col() {
+		let mut arr = Array2D::new(2, 3, '.');
+		arr.insert_col(1, '*');
+		let s: String = arr.data.iter().collect();
+		assert_eq!(s, ".*..*..*.");
+
+		let mut arr = Array2D::new(2, 3, '.');
+		arr.insert_col(0, '*');
+		let s: String = arr.data.iter().collect();
+		assert_eq!(s, "*..*..*..");
 	}
 }
